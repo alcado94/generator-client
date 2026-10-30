@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "empresa-sdk-core"
+version = "1.0.0"
+requires-python = ">=3.11"
+description = "Autenticación compartida para los SDK de Empresa"
+dependencies = ["Authlib>=1.6,<2", "requests>=2.32,<3"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,34 @@
+extends: [recommended]
+rules:
+  no-server-example.com: off
+  no-server-trailing-slash: error
+  operation-4xx-response: off
+apis:
+  ventas:
+    root: ./openapi.yaml
+    decorators:
+      filter-in:
+        applyTo: Operation
+        property: tags
+        value: [Ventas]
+  clientes:
+    root: ./openapi.yaml
+    decorators:
+      filter-in:
+        applyTo: Operation
+        property: tags
+        value: [Clientes]
+  productos:
+    root: ./openapi.yaml
+    decorators:
+      filter-in:
+        applyTo: Operation
+        property: tags
+        value: [Productos]
+  sistema:
+    root: ./openapi.yaml
+    decorators:
+      filter-in:
+        applyTo: Operation
+        property: tags
+        value: [Sistema]

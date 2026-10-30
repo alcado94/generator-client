@@ -1,0 +1,630 @@
+openapi: 3.0.3
+info:
+  title: Empresa API — laboratorio de SDK modular
+  version: 1.0.0
+  description: |
+    API de prueba para generar SDK Python independientes por tag.
+    Los importes se expresan en unidades menores (1099 equivale a 10,99 EUR).
+    La paginación utiliza páginas de base uno. Los identificadores entre módulos
+    son UUID, sin dependencias de modelos de otros módulos.
+    El proveedor OAuth2 se configura en ejecución; no se publican secretos aquí.
+  contact:
+    name: Equipo de plataforma
+    email: plataforma@empresa.example
+  license:
+    name: Uso interno
+    url: https://empresa.example/licencia
+servers:
+  - url: http://127.0.0.1:8000/v1
+    description: Demostración local
+  - url: https://api.empresa.example/v1
+    description: Entorno empresarial de ejemplo
+tags:
+  - name: Ventas
+    description: Registro y consulta de ventas y sus líneas.
+  - name: Clientes
+    description: Gestión del directorio de clientes.
+  - name: Productos
+    description: Catálogo y existencias.
+  - name: Sistema
+    description: Información pública del servicio.
+security:
+  - EmpresaOAuth: [ventas.read]
+paths:
+  /ventas:
+    get:
+      tags: [Ventas]
+      operationId: listar_ventas
+      summary: Listar ventas con filtros y paginación
+      security:
+        - EmpresaOAuth: [ventas.read]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: estado
+          in: query
+          description: Estado exacto de la venta.
+          schema:
+            $ref: '#/components/schemas/EstadoVenta'
+        - name: cliente_id
+          in: query
+          description: UUID del cliente comprador.
+          schema: {type: string, format: uuid}
+        - name: desde
+          in: query
+          description: Fecha de creación mínima, inclusiva, en UTC.
+          schema: {type: string, format: date-time}
+      responses:
+        '200':
+          description: Página de ventas
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PaginaVentas'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+    post:
+      tags: [Ventas]
+      operationId: crear_venta
+      summary: Crear una venta de forma idempotente
+      description: Repetir la misma clave y cuerpo devuelve la venta original. Un cuerpo distinto con la misma clave produce 409.
+      security:
+        - EmpresaOAuth: [ventas.write]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Clave única de la petición, conservada durante la vida del servidor demo.
+          schema: {type: string, minLength: 1, maxLength: 128}
+          example: pedido-2026-001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CrearVenta'}
+            example:
+              cliente_id: 11111111-1111-4111-8111-111111111111
+              moneda: EUR
+              lineas:
+                - producto_id: 22222222-2222-4222-8222-222222222222
+                  cantidad: 2
+                  precio_unitario: 1250
+      responses:
+        '201':
+          description: Venta creada o recuperada por idempotencia
+          headers:
+            Location:
+              description: URL relativa de la venta.
+              schema: {type: string}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Venta'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /ventas/{venta_id}:
+    parameters:
+      - $ref: '#/components/parameters/VentaId'
+    get:
+      tags: [Ventas]
+      operationId: obtener_venta
+      summary: Consultar una venta
+      description: Hereda el scope ventas.read de la seguridad global.
+      responses:
+        '200':
+          description: Venta encontrada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Venta'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /ventas/{venta_id}/cancelacion:
+    parameters:
+      - $ref: '#/components/parameters/VentaId'
+    post:
+      tags: [Ventas]
+      operationId: cancelar_venta
+      summary: Cancelar una venta pendiente
+      security:
+        - EmpresaOAuth: [ventas.write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CancelacionVenta'}
+      responses:
+        '200':
+          description: Venta cancelada
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Venta'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /ventas/{venta_id}/lineas:
+    parameters:
+      - $ref: '#/components/parameters/VentaId'
+    get:
+      tags: [Ventas]
+      operationId: listar_lineas_venta
+      summary: Consultar las líneas de una venta
+      security:
+        - EmpresaOAuth: [ventas.read]
+      responses:
+        '200':
+          description: Líneas de la venta
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/LineaVenta'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /clientes:
+    get:
+      tags: [Clientes]
+      operationId: listar_clientes
+      summary: Buscar clientes
+      security:
+        - EmpresaOAuth: [clientes.read]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: q
+          in: query
+          description: Búsqueda parcial por nombre, sin distinguir mayúsculas.
+          schema: {type: string, maxLength: 100}
+        - name: activo
+          in: query
+          description: Filtrar por estado de actividad.
+          schema: {type: boolean}
+      responses:
+        '200':
+          description: Página de clientes
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PaginaClientes'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+    post:
+      tags: [Clientes]
+      operationId: crear_cliente
+      summary: Registrar un cliente
+      security:
+        - EmpresaOAuth: [clientes.write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CrearCliente'}
+            example:
+              nombre: Ada Ejemplo
+              email: ada@empresa.example
+              fecha_alta: '2026-10-30'
+              direccion:
+                calle: Calle Mayor 10
+                ciudad: Madrid
+                codigo_postal: '28001'
+                pais: ES
+      responses:
+        '201':
+          description: Cliente creado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Cliente'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /clientes/{cliente_id}:
+    parameters:
+      - $ref: '#/components/parameters/ClienteId'
+    get:
+      tags: [Clientes]
+      operationId: obtener_cliente
+      summary: Consultar un cliente
+      security:
+        - EmpresaOAuth: [clientes.read]
+      responses:
+        '200':
+          description: Cliente encontrado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Cliente'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+    patch:
+      tags: [Clientes]
+      operationId: actualizar_cliente
+      summary: Actualizar parcialmente un cliente
+      security:
+        - EmpresaOAuth: [clientes.write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ActualizarCliente'}
+      responses:
+        '200':
+          description: Cliente actualizado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Cliente'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+    delete:
+      tags: [Clientes]
+      operationId: desactivar_cliente
+      summary: Desactivar un cliente sin eliminar su historial
+      security:
+        - EmpresaOAuth: [clientes.write]
+      responses:
+        '204': {description: Cliente desactivado}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /productos:
+    get:
+      tags: [Productos]
+      operationId: listar_productos
+      summary: Consultar el catálogo
+      security:
+        - EmpresaOAuth: [productos.read]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: categoria
+          in: query
+          description: Categoría del catálogo.
+          schema: {$ref: '#/components/schemas/CategoriaProducto'}
+        - name: etiquetas
+          in: query
+          description: El producto debe contener todas las etiquetas indicadas.
+          style: form
+          explode: true
+          schema:
+            type: array
+            maxItems: 10
+            items: {type: string, maxLength: 40}
+      responses:
+        '200':
+          description: Página de productos
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PaginaProductos'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /productos/{producto_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProductoId'
+    get:
+      tags: [Productos]
+      operationId: obtener_producto
+      summary: Consultar un producto
+      security:
+        - EmpresaOAuth: [productos.read]
+      responses:
+        '200':
+          description: Producto encontrado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Producto'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /productos/{producto_id}/existencias:
+    parameters:
+      - $ref: '#/components/parameters/ProductoId'
+    put:
+      tags: [Productos]
+      operationId: actualizar_existencias
+      summary: Establecer las existencias absolutas
+      security:
+        - EmpresaOAuth: [productos.write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ActualizarExistencias'}
+      responses:
+        '200':
+          description: Producto actualizado
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Producto'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+  /salud:
+    get:
+      tags: [Sistema]
+      operationId: obtener_salud
+      summary: Comprobar disponibilidad sin autenticación
+      security: []
+      responses:
+        '200':
+          description: Servicio disponible
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Salud'}
+              example: {estado: ok}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /version:
+    get:
+      tags: [Sistema]
+      operationId: obtener_version
+      summary: Consultar versión sin autenticación
+      security: []
+      responses:
+        '200':
+          description: Versión del servicio
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Version'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+components:
+  securitySchemes:
+    EmpresaOAuth:
+      type: oauth2
+      description: Credenciales de aplicación; el proveedor demo también acepta client_secret_post.
+      flows:
+        clientCredentials:
+          tokenUrl: http://127.0.0.1:8000/oauth/token
+          scopes:
+            ventas.read: Consultar ventas
+            ventas.write: Crear y cancelar ventas
+            clientes.read: Consultar clientes
+            clientes.write: Gestionar clientes
+            productos.read: Consultar catálogo
+            productos.write: Gestionar existencias
+  parameters:
+    Page:
+      name: page
+      in: query
+      description: Número de página, empezando en uno.
+      schema: {type: integer, minimum: 1, default: 1}
+    PageSize:
+      name: page_size
+      in: query
+      description: Máximo de resultados por página.
+      schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+    VentaId:
+      name: venta_id
+      in: path
+      required: true
+      description: Identificador único de la venta.
+      schema: {type: string, format: uuid}
+    ClienteId:
+      name: cliente_id
+      in: path
+      required: true
+      description: Identificador único del cliente.
+      schema: {type: string, format: uuid}
+    ProductoId:
+      name: producto_id
+      in: path
+      required: true
+      description: Identificador único del producto.
+      schema: {type: string, format: uuid}
+  responses:
+    BadRequest:
+      description: Petición incorrecta
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Problema'}
+    Unauthorized:
+      description: Token ausente, desconocido o caducado
+      headers:
+        WWW-Authenticate:
+          description: Desafío Bearer.
+          schema: {type: string}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Problema'}
+          example: {codigo: unauthorized, detalle: Token ausente o caducado}
+    Forbidden:
+      description: El token no contiene el scope requerido
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Problema'}
+    NotFound:
+      description: Recurso inexistente
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Problema'}
+    Conflict:
+      description: Conflicto de estado, email duplicado o clave de idempotencia reutilizada
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Problema'}
+    ValidationError:
+      description: Los datos no satisfacen las restricciones del contrato
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Problema'}
+    RateLimited:
+      description: Límite de solicitudes excedido (reservado para el gateway empresarial)
+      headers:
+        Retry-After:
+          description: Segundos hasta el próximo intento.
+          schema: {type: integer, minimum: 1}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Problema'}
+    Unavailable:
+      description: Servicio temporalmente no disponible
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Problema'}
+  schemas:
+    Problema:
+      type: object
+      required: [codigo, detalle]
+      properties:
+        codigo: {type: string, example: not_found}
+        detalle: {type: string, example: Recurso no encontrado}
+        errores:
+          type: array
+          items: {type: string}
+    Paginacion:
+      type: object
+      required: [page, page_size, total]
+      properties:
+        page: {type: integer, minimum: 1}
+        page_size: {type: integer, minimum: 1, maximum: 100}
+        total: {type: integer, minimum: 0}
+    EstadoVenta:
+      type: string
+      enum: [pendiente, confirmada, cancelada]
+    LineaVenta:
+      type: object
+      required: [producto_id, cantidad, precio_unitario]
+      properties:
+        producto_id: {type: string, format: uuid}
+        cantidad: {type: integer, minimum: 1, maximum: 10000}
+        precio_unitario:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Precio en unidades menores de la moneda.
+    CrearVenta:
+      type: object
+      required: [cliente_id, moneda, lineas]
+      properties:
+        cliente_id: {type: string, format: uuid}
+        moneda: {type: string, enum: [EUR, USD, GBP]}
+        lineas:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: {$ref: '#/components/schemas/LineaVenta'}
+        notas: {type: string, maxLength: 1000, nullable: true}
+        metadatos:
+          type: object
+          additionalProperties: {type: string}
+    Venta:
+      allOf:
+        - $ref: '#/components/schemas/CrearVenta'
+        - type: object
+          required: [id, estado, total, creada_en]
+          properties:
+            id: {type: string, format: uuid, readOnly: true}
+            estado: {$ref: '#/components/schemas/EstadoVenta'}
+            total: {type: integer, format: int64, minimum: 0, readOnly: true}
+            creada_en: {type: string, format: date-time, readOnly: true}
+            motivo_cancelacion: {type: string, nullable: true, maxLength: 500}
+    CancelacionVenta:
+      type: object
+      required: [motivo]
+      properties:
+        motivo: {type: string, minLength: 3, maxLength: 500}
+    PaginaVentas:
+      type: object
+      required: [items, paginacion]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/Venta'}
+        paginacion: {$ref: '#/components/schemas/Paginacion'}
+    Direccion:
+      type: object
+      required: [calle, ciudad, codigo_postal, pais]
+      properties:
+        calle: {type: string, minLength: 1, maxLength: 200}
+        ciudad: {type: string, minLength: 1, maxLength: 100}
+        codigo_postal: {type: string, minLength: 1, maxLength: 20}
+        pais: {type: string, pattern: '^[A-Z]{2}$', example: ES}
+    CrearCliente:
+      type: object
+      required: [nombre, email, fecha_alta]
+      properties:
+        nombre: {type: string, minLength: 1, maxLength: 150}
+        email: {type: string, format: email, maxLength: 254}
+        fecha_alta: {type: string, format: date}
+        direccion: {$ref: '#/components/schemas/Direccion'}
+        telefono: {type: string, nullable: true, maxLength: 30}
+    ActualizarCliente:
+      type: object
+      minProperties: 1
+      properties:
+        nombre: {type: string, minLength: 1, maxLength: 150}
+        email: {type: string, format: email, maxLength: 254}
+        direccion: {$ref: '#/components/schemas/Direccion'}
+        telefono: {type: string, nullable: true, maxLength: 30}
+    Cliente:
+      allOf:
+        - $ref: '#/components/schemas/CrearCliente'
+        - type: object
+          required: [id, activo]
+          properties:
+            id: {type: string, format: uuid, readOnly: true}
+            activo: {type: boolean, readOnly: true}
+    PaginaClientes:
+      type: object
+      required: [items, paginacion]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/Cliente'}
+        paginacion: {$ref: '#/components/schemas/Paginacion'}
+    CategoriaProducto:
+      type: string
+      enum: [hardware, software, servicios]
+    Producto:
+      type: object
+      required: [id, sku, nombre, categoria, precio, moneda, existencias, etiquetas]
+      properties:
+        id: {type: string, format: uuid}
+        sku: {type: string, pattern: '^[A-Z0-9-]{3,40}$'}
+        nombre: {type: string, minLength: 1, maxLength: 150}
+        categoria: {$ref: '#/components/schemas/CategoriaProducto'}
+        precio: {type: integer, format: int64, minimum: 0}
+        moneda: {type: string, enum: [EUR, USD, GBP]}
+        existencias: {type: integer, minimum: 0}
+        etiquetas:
+          type: array
+          items: {type: string, maxLength: 40}
+    ActualizarExistencias:
+      type: object
+      required: [existencias]
+      properties:
+        existencias: {type: integer, minimum: 0, maximum: 1000000}
+    PaginaProductos:
+      type: object
+      required: [items, paginacion]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/Producto'}
+        paginacion: {$ref: '#/components/schemas/Paginacion'}
+    Salud:
+      type: object
+      required: [estado]
+      properties:
+        estado: {type: string, enum: [ok]}
+    Version:
+      type: object
+      required: [version, servicio]
+      properties:
+        version: {type: string, example: 1.0.0}
+        servicio: {type: string, example: empresa-api-demo}

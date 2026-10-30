@@ -1,0 +1,12 @@
+.venv/
+node_modules/
+build/
+dist/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.env
+packages/empresa-sdk-ventas/
+packages/empresa-sdk-clientes/
+packages/empresa-sdk-productos/
+packages/empresa-sdk-sistema/
